@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c ' *)",
+      "Bash(PYTHONIOENCODING=utf-8 python -c ' *)",
+      "WebFetch(domain:aws.amazon.com)",
+      "Bash(curl -s -L -A \"Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/120.0.0.0 Safari/537.36\" \"https://aws.amazon.com/cn/blogs/china/sample-project-of-data-centric-ai/\")",
+      "WebSearch",
+      "Bash(curl -L -o \"MR.Rec_2510.14629.pdf\" \"https://arxiv.org/pdf/2510.14629\")",
+      "Bash(curl -L -o \"CoRAL_2403.06447.pdf\" \"https://arxiv.org/pdf/2403.06447\")",
+      "Bash(curl -L -o \"RecGPT-V2_2512.14503.pdf\" \"https://arxiv.org/pdf/2512.14503\")",
+      "Bash(curl -L -o \"EMG-RAG_2409.19401.pdf\" \"https://arxiv.org/pdf/2409.19401\")",
+      "Bash(curl -L -o \"ARAG_2506.21931.pdf\" \"https://arxiv.org/pdf/2506.21931\")",
+      "Bash(curl -L -o \"Dendron_BT_LLM_2404.07439.pdf\" \"https://arxiv.org/pdf/2404.07439\")",
+      "Bash(curl -L -o \"LLM_Agents_RecSys_Survey_2502.10050.pdf\" \"https://arxiv.org/pdf/2502.10050\")",
+      "Bash(curl -L -o \"ROLeR_2407.13163.pdf\" \"https://arxiv.org/pdf/2407.13163\")",
+      "Bash(curl -L -o \"P5_RLP_2203.13366.pdf\" \"https://arxiv.org/pdf/2203.13366\")",
+      "Bash(curl -L -o \"RALLRec_2502.06101.pdf\" \"https://arxiv.org/pdf/2502.06101\")",
+      "Bash(curl -L -o \"MocDT_2501.07212.pdf\" \"https://arxiv.org/pdf/2501.07212\")",
+      "Bash(curl -L -o \"PGCR_2502.02327.pdf\" \"https://arxiv.org/pdf/2502.02327\")",
+      "Bash(git init *)",
+      "Bash(git add *)"
+    ]
+  }
+}

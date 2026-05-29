@@ -1,0 +1,6 @@
+@inproceedings{geng2022recommendation,
+  title={Recommendation as Language Processing (RLP): A Unified Pretrain, Personalized Prompt \& Predict Paradigm (P5)},
+  author={Geng, Shijie and Liu, Shuchang and Fu, Zuohui and Ge, Yingqiang and Zhang, Yongfeng},
+  booktitle={Proceedings of the Sixteenth ACM Conference on Recommender Systems},
+  year={2022}
+}

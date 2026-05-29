@@ -1,0 +1,5 @@
+# Large data files (> 100MB GitHub limit)
+*.pkl
+*.json.gz
+meta_data.pkl
+user_data.pkl
