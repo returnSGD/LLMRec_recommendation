@@ -8,3 +8,6 @@ user_data.pkl
 __pycache__/
 *.pyc
 *.log
+
+# Claude local config
+.claude/

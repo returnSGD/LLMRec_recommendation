@@ -236,8 +236,14 @@ class MemoryManager:
         long_term_agg = np.zeros(self.memory_dim, dtype=np.float32)
         confidence = 0.0
         if len(self.long_term) > 0:
+            # Use short-term context as query for long-term retrieval
+            # (same dimensionality as FAISS store)
+            query = short_term_context.astype(np.float32)
+            if query.sum() == 0:
+                # No short-term context, use zero vector
+                query = np.zeros(self.memory_dim, dtype=np.float32)
             retrieved_vecs, _, confidence = self.retrieve(
-                query_vector=user_embedding.astype(np.float32),
+                query_vector=query,
                 user_id=user_id,
                 current_time=current_time,
             )

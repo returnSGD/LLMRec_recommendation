@@ -7,4 +7,7 @@ Two core contributions:
 Plus:
   3. Memory uncertainty → adaptive exploration strength
   4. Efficient discrete-action inference (1 forward pass vs P5's beam=20)
+
+Entry points:
+  python -m src.rl_experiment  → Comparison experiment (P5 vs RL+Memory)
 """
