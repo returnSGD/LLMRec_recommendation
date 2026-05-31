@@ -39,6 +39,8 @@ class JointEncoder(T5Stack):
         self.whole_word_embeddings = nn.Embedding(
             512, config.d_model   ## config.d_model is 768 for base
         )
+        self._tied_weights_keys = {}  # required by transformers >=5.0 tie_weights
+        self.all_tied_weights_keys = {}  # required by transformers >=5.0 tie_weights
         self.init_weights()
         self.model_parallel = False
         self.device_map = None
@@ -185,6 +187,14 @@ class P5(T5ForConditionalGeneration):
 
         self.shared = nn.Embedding(config.vocab_size, config.d_model)
 
+        # Set up tied weights keys before creating sub-modules
+        # (required by transformers >=5.0 which accesses all_tied_weights_keys during init_weights)
+        self._tied_weights_keys = {
+            'lm_head.weight': 'shared.weight',
+            'encoder.embed_tokens.weight': 'shared.weight',
+            'decoder.embed_tokens.weight': 'shared.weight',
+        }
+
         encoder_config = copy.deepcopy(config)
         encoder_config.is_decoder = False
         encoder_config.use_cache = False
@@ -202,7 +212,7 @@ class P5(T5ForConditionalGeneration):
 
         self.lm_head = nn.Linear(config.d_model, config.vocab_size, bias=False)
 
-        self.init_weights()
+        self.post_init()
 
         self.model_parallel = False
         self.device_map = None
@@ -297,7 +307,7 @@ class P5(T5ForConditionalGeneration):
             if decoder_inputs_embeds is not None:
                 decoder_inputs_embeds = decoder_inputs_embeds[:, -1:]
 
-        if attention_mask is None:
+        if attention_mask is None and input_ids is not None:
             attention_mask = input_ids.ne(self.config.pad_token_id).to(dtype=hidden_states.dtype, device=hidden_states.device)
         # encoder_attention_mask — let decoder compute from encoder_hidden_states
         # Passing None allows T5Stack.create_bidirectional_mask to infer correct shapes
@@ -357,13 +367,23 @@ class P5(T5ForConditionalGeneration):
         if past is not None:
             input_ids = input_ids[:, -1:]
 
-        output = {
-            "decoder_input_ids": input_ids,
-            "past_key_values": past,
-            "encoder_outputs": encoder_outputs,
-            "attention_mask": attention_mask,
-            "use_cache": use_cache,
-        }
+        if encoder_outputs is None:
+            # First step: pass encoder inputs so the encoder can run
+            output = {
+                "input_ids": input_ids,
+                "decoder_input_ids": input_ids,
+                "past_key_values": past,
+                "attention_mask": attention_mask,
+                "use_cache": use_cache,
+            }
+        else:
+            output = {
+                "decoder_input_ids": input_ids,
+                "past_key_values": past,
+                "encoder_outputs": encoder_outputs,
+                "attention_mask": attention_mask,
+                "use_cache": use_cache,
+            }
 
         return output
 

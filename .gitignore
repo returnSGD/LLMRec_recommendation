@@ -3,3 +3,8 @@
 *.json.gz
 meta_data.pkl
 user_data.pkl
+
+# Python generated files
+__pycache__/
+*.pyc
+*.log

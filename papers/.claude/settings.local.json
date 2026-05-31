@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import pdfplumber; print\\('pdfplumber available'\\)\")",
+      "Bash(python -c \"import PyPDF2; print\\('PyPDF2 available'\\)\")",
+      "Bash(python -c \"import pikepdf; print\\('pikepdf available'\\)\")",
+      "Bash(pip install *)",
+      "Bash(python -c ' *)"
+    ]
+  }
+}

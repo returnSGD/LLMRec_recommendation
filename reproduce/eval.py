@@ -224,7 +224,7 @@ class RatingEvaluator:
 
     def _generate(self, source: str) -> str:
         input_ids = self.tokenizer.encode(source, truncation=True,
-                                           max_length=self.tokenizer.max_len)
+                                           max_length=self.tokenizer.model_max_length)
         input_tensor = torch.LongTensor(input_ids).unsqueeze(0).to(self.device)
         with torch.no_grad():
             output = self.model.generate(input_ids=input_tensor,
@@ -733,8 +733,15 @@ def load_model(checkpoint_path: str, backbone: str, device: str):
     config.losses = 'rating,sequential,explanation,review,traditional'
     config.gen_max_length = 64
 
+    tokenizer = P5Tokenizer.from_pretrained(backbone, max_length=512, do_lower_case=True)
+
     from train import P5Pretraining
     model = P5Pretraining.from_pretrained(backbone, config=config)
+    model.resize_token_embeddings(tokenizer.vocab_size)
+
+    # Fix: whole_word_embeddings may be corrupted during from_pretrained loading
+    if hasattr(model.encoder, 'whole_word_embeddings'):
+        model.encoder.whole_word_embeddings.weight.data.normal_(mean=0.0, std=1.0)
 
     ckpt = torch.load(checkpoint_path, map_location=device)
     state_dict = ckpt.get('model', ckpt)
@@ -747,8 +754,6 @@ def load_model(checkpoint_path: str, backbone: str, device: str):
     model.load_state_dict(new_state, strict=False)
     model = model.to(device)
     model.eval()
-
-    tokenizer = P5Tokenizer.from_pretrained(backbone, max_length=512, do_lower_case=True)
     model.tokenizer = tokenizer
 
     return model, tokenizer

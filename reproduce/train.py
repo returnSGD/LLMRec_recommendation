@@ -114,8 +114,9 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='beauty',
                         choices=['beauty', 'sports', 'toys', 'yelp'])
-    parser.add_argument('--backbone', type=str, default='t5-small',
-                        choices=['t5-small', 't5-base'])
+    parser.add_argument('--backbone', type=str,
+                        default='/root/autodl-tmp/pretrained_models/AI-ModelScope/t5-small',
+                        help='T5 backbone path (HuggingFace name or local path)')
     parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--lr', type=float, default=1e-3)
@@ -164,7 +165,8 @@ def main():
 
     # Output dir
     timestamp = datetime.now().strftime('%b%d_%H-%M')
-    run_name = f"{args.dataset}-{args.backbone.replace('t5-','')}_{timestamp}"
+    backbone_name = Path(args.backbone).name if args.backbone.startswith('/') else args.backbone.replace('t5-','')
+    run_name = f"{args.dataset}-{backbone_name}_{timestamp}"
     output_dir = Path(args.output_dir) / run_name
     output_dir.mkdir(parents=True, exist_ok=True)
     print(f"Output: {output_dir}")
@@ -262,6 +264,13 @@ def main():
 
     model = P5Pretraining.from_pretrained(args.backbone, config=config)
     model.resize_token_embeddings(tokenizer.vocab_size)
+
+    # Fix: whole_word_embeddings may be corrupted during from_pretrained loading
+    # Reinitialize to avoid NaN in forward pass
+    if hasattr(model.encoder, 'whole_word_embeddings'):
+        model.encoder.whole_word_embeddings.weight.data.normal_(mean=0.0, std=1.0)
+        print("Reinitialized whole_word_embeddings (mitigate corrupt weight issue)")
+
     model.tokenizer = tokenizer
     model = model.to(device)
 
