@@ -49,7 +49,7 @@ from src.rl.policy import POMDPPolicy, UncertaintyAdaptiveEpsilon
 
 
 # ──────────────────────────────────────────────────────────────────
-#  Config for RTX 3060 (12GB VRAM)
+#  Config presets
 # ──────────────────────────────────────────────────────────────────
 
 def get_3060_config(sample_ratio: float = 0.05) -> Config:
@@ -81,6 +81,38 @@ def get_3060_config(sample_ratio: float = 0.05) -> Config:
         cql_alpha=0.5,
     )
     config.training.total_steps = 2000
+    return config
+
+
+def get_server_config(sample_ratio: float = 0.05) -> Config:
+    """RTX PRO 6000 (96GB) config: larger dims, full memory, big batches."""
+    config = Config()
+    config.memory = MemoryConfig(
+        short_term_capacity=50,
+        memory_dim=256,
+        faiss_index_type="IVFFlat",
+        top_k_retrieval=20,
+        time_decay_lambda=0.01,
+    )
+    config.rl = RLConfig(
+        state_dim=512,
+        hidden_dim=256,
+        num_actions=NUM_ACTIONS,
+        policy_arch="mlp",
+        num_layers=3,
+        dropout=0.1,
+        epsilon_start=0.3,
+        epsilon_end=0.05,
+        epsilon_decay_steps=10000,
+        algorithm="cql",
+        gamma=0.99,
+        tau=0.005,
+        lr=3e-4,
+        batch_size=256,
+        grad_clip=1.0,
+        cql_alpha=1.0,
+    )
+    config.training.total_steps = 10000
     return config
 
 
@@ -940,6 +972,9 @@ def parse_args():
     p.add_argument('--output_dir', type=str, default='outputs/rl_memory')
     p.add_argument('--seed', type=int, default=42)
     p.add_argument('--device', type=str, default='cuda')
+    p.add_argument('--config_preset', type=str, default='3060',
+                   choices=['3060', 'server'],
+                   help='Config preset: 3060 (6GB) or server (96GB)')
     p.add_argument('--skip_training', action='store_true',
                    help='Skip training, only evaluate')
     return p.parse_args()
@@ -966,8 +1001,11 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
     print(f"Output: {output_dir}")
 
-    # Config for 3060
-    config = get_3060_config(args.sample_ratio)
+    # Config — select preset based on GPU
+    if args.config_preset == 'server':
+        config = get_server_config(args.sample_ratio)
+    else:
+        config = get_3060_config(args.sample_ratio)
     config.rl.batch_size = args.batch_size
     config.training.total_steps = max(2000, args.epochs * 500)
 
