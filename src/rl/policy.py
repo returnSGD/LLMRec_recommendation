@@ -34,6 +34,7 @@ class POMDPPolicy(nn.Module):
                  dropout: float = 0.1,
                  use_periodic_context: bool = True):
         super().__init__()
+        self.user_dim = user_dim
 
         # Input: user_emb + short_mem + long_mem + confidence + periodic
         input_dim = user_dim + memory_dim * 2 + 1

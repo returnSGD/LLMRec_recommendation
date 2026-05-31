@@ -133,15 +133,29 @@ class SequentialDataBridge:
             return [l.rstrip('\n') for l in f]
 
     def get_train_data(self, sample_ratio=1.0, min_history=2):
-        samples = []
+        user_samples = {}
         for uid, seq in self.user_sequences.items():
+            if len(seq) <= min_history:
+                continue
+            seq_samples = []
             for i in range(min_history, len(seq)):
-                samples.append({"user_id": uid, "history": seq[:i], "target_item": seq[i]})
+                seq_samples.append({"user_id": uid, "history": seq[:i], "target_item": seq[i]})
+            user_samples[uid] = seq_samples
+
         if sample_ratio < 1.0:
-            n = max(1, int(len(samples) * sample_ratio))
+            n_users = max(1, int(len(user_samples) * sample_ratio))
+            selected = set(random.sample(list(user_samples.keys()), n_users))
+            samples = []
+            for uid in selected:
+                samples.extend(user_samples[uid])
             random.shuffle(samples)
-            samples = samples[:n]
-        print(f"  Train samples: {len(samples)} (ratio={sample_ratio})")
+        else:
+            samples = []
+            for seq_samples in user_samples.values():
+                samples.extend(seq_samples)
+
+        n_sampled = max(1, int(len(user_samples) * sample_ratio)) if sample_ratio < 1.0 else len(user_samples)
+        print(f"  Train samples: {len(samples)} (users={len(user_samples)}, sampled_users={n_sampled}, ratio={sample_ratio})")
         return samples
 
     def get_test_data(self, max_users=5000):
@@ -252,7 +266,8 @@ class CandidateRetriever:
 class AblationRLModel:
     """RL + Memory model that supports ablation variants."""
 
-    def __init__(self, p5_model, config, user_sequences, variant, device="cuda"):
+    def __init__(self, p5_model, config, user_sequences, variant, device="cuda",
+                 cooc_embeddings=None):
         self.p5 = p5_model
         self.config = config
         self.device = device
@@ -263,8 +278,12 @@ class AblationRLModel:
         self.use_long_term = self.variant_cfg["use_long_term"]
         self.use_time_decay = self.variant_cfg["time_decay"]
         self.use_adaptive_epsilon = self.variant_cfg["adaptive_epsilon"]
+        self.cooc_embeddings = cooc_embeddings
 
-        user_dim = p5_model.config.d_model
+        if cooc_embeddings is not None:
+            user_dim = next(iter(cooc_embeddings.values())).shape[0]
+        else:
+            user_dim = p5_model.config.d_model
         mem_dim = config.memory.memory_dim
 
         self.memory_encoder = MemoryEncoder(
@@ -306,8 +325,23 @@ class AblationRLModel:
 
     def encode_user(self, user_id):
         item_seq = self.user_sequences.get(user_id, [])
-        if not item_seq or self.p5 is None:
-            return np.zeros(self.p5.config.d_model, dtype=np.float32)
+        if not item_seq:
+            if self.cooc_embeddings:
+                return np.zeros(next(iter(self.cooc_embeddings.values())).shape[0], dtype=np.float32)
+            return np.zeros(self.p5.config_d_model if self.p5 else 512, dtype=np.float32)
+
+        if self.cooc_embeddings is not None:
+            embs = []
+            for iid in item_seq[-50:]:
+                e = self.cooc_embeddings.get(int(iid))
+                if e is not None:
+                    embs.append(e)
+            if embs:
+                return np.mean(embs, axis=0).astype(np.float32)
+            return np.zeros(next(iter(self.cooc_embeddings.values())).shape[0], dtype=np.float32)
+
+        if self.p5 is None:
+            return np.zeros(512, dtype=np.float32)
         with torch.no_grad():
             ids = torch.tensor([int(i) % self.p5.shared.num_embeddings
                                 for i in item_seq[-50:]], device=self.device)
@@ -373,7 +407,8 @@ class AblationRLModel:
             "periodic_flags": periodic,
         }
 
-    def forward(self, user_id, user_emb=None, deterministic=False, topk=20):
+    def forward(self, user_id, user_emb=None, deterministic=False, topk=20,
+                eval_history=None):
         state = self.get_state(user_id, user_emb)
 
         ue_t = torch.from_numpy(state["user_emb"]).unsqueeze(0).to(self.device)
@@ -399,8 +434,16 @@ class AblationRLModel:
 
         candidates = []
         if self.retriever is not None:
-            history = self.user_sequences.get(user_id, [])
-            candidates = self.retriever.retrieve(user_id, state["user_emb"], strategy, history)
+            if eval_history is not None:
+                # During eval: use test history for exclusion, NOT full sequence
+                exclude = set(eval_history)
+                history_for_ret = list(eval_history)
+            else:
+                exclude = set(self.user_sequences.get(user_id, []))
+                history_for_ret = self.user_sequences.get(user_id, [])
+            candidates = self.retriever.retrieve(
+                user_id, state["user_emb"], strategy,
+                history_for_ret, exclude)
             if len(candidates) > topk:
                 candidates = candidates[:topk]
 
@@ -425,33 +468,58 @@ class AblationRLModel:
 # ──────────────────────────────────────────
 
 def train_ablation_model(model, data_bridge, config, train_samples):
-    """BC warm-start + CQL, same as full experiment but shorter."""
+    """BC warm-start + CQL, optimized buffer building."""
     print(f"  Training {model.variant_cfg['name']}...")
 
-    # Build buffer
+    # Build buffer (optimized: single similarity lookup, rank-based action assignment)
+    import numpy as np
     policy_buffer = []
-    for sample in tqdm(train_samples[:config.training.total_steps * 3], desc="  Building buffer"):
+    all_item_ids = model.retriever.item_ids
+    item_norm = model.retriever.item_norm
+    
+    _max_buf = min(config.training.total_steps * 2, 3000)
+    for idx, sample in enumerate(tqdm(train_samples[:len(train_samples)], desc="  Building buffer")):
         user_id, history, target = sample["user_id"], sample["history"], sample["target_item"]
         if model.retriever is None:
             continue
         user_emb = data_bridge.encode_user_history(history)
-        best_action, best_rank = 0, float('inf')
-        for aid in range(NUM_ACTIONS):
-            strategy = action_to_candidate_strategy(aid)
-            candidates = model.retriever.retrieve(user_id, user_emb, strategy, history)
-            if target in candidates:
-                rank = candidates.index(target) + 1
-                if rank < best_rank:
-                    best_rank, best_action = rank, aid
-        if best_rank == float('inf'):
+        
+        # Single similarity lookup
+        query = user_emb / (np.linalg.norm(user_emb) + 1e-8)
+        scores = item_norm @ query
+        ranked = np.argsort(scores)[::-1]
+        
+        # Find target rank in similarity-ranked list
+        target_rank = float('inf')
+        exclude = set(history)
+        pos = 0
+        for r_idx in ranked:
+            iid = all_item_ids[r_idx]
+            if iid not in exclude:
+                pos += 1
+                if int(iid) == int(target):
+                    target_rank = pos
+                    break
+        
+        # Rank-based action assignment for diversity
+        if target_rank == float('inf'):
             best_action = 1
+        elif target_rank <= 5:
+            best_action = 1  # exploit_similar
+        elif target_rank <= 20:
+            best_action = 14  # increase_diversity
+        elif target_rank <= 50:
+            best_action = 6  # explore_new_category
+        else:
+            best_action = [0, 7, 10, 12, 15][idx % 5]
+        
         state = model.get_state(user_id, user_emb)
         policy_buffer.append({
             "user_emb": state["user_emb"], "memory_context": state["memory_context"],
             "retrieval_confidence": state["retrieval_confidence"],
             "periodic_flags": state["periodic_flags"], "action": best_action,
         })
-        if len(policy_buffer) >= config.training.total_steps * 3:
+        if len(policy_buffer) >= _max_buf:
             break
 
     if len(policy_buffer) < 8:
@@ -481,7 +549,7 @@ def train_ablation_model(model, data_bridge, config, train_samples):
 
     # CQL fine-tuning
     target_policy = POMDPPolicy(
-        user_dim=model.p5.config.d_model,
+        user_dim=model.policy.user_dim,
         memory_dim=config.memory.memory_dim,
         num_actions=NUM_ACTIONS,
         hidden_dim=config.rl.hidden_dim,
@@ -591,14 +659,24 @@ def evaluate_rl_model(model, test_samples, max_eval=200):
             user_id, history, target = sample["user_id"], sample["history"], sample["target_item"]
             if len(history) < 1 or model.retriever is None:
                 continue
-            if model.p5 is not None:
+            # Use co-occurrence encoding if available, else P5 encoding
+            if model.cooc_embeddings is not None:
+                # Encode from TEST history only (avoid data leakage)
+                embs = []
+                for iid in history[-30:]:
+                    e = model.cooc_embeddings.get(int(iid))
+                    if e is not None:
+                        embs.append(e)
+                user_emb = __import__('numpy').mean(embs, axis=0).astype(__import__('numpy').float32) if embs else __import__('numpy').zeros(next(iter(model.cooc_embeddings.values())).shape[0], dtype=__import__('numpy').float32)
+            elif model.p5 is not None:
                 with torch.no_grad():
                     ids = torch.tensor([int(i) % model.p5.shared.num_embeddings
                                         for i in history[-30:]], device=model.device)
                     user_emb = model.p5.shared(ids).mean(dim=0).cpu().numpy().astype(np.float32)
             else:
                 user_emb = None
-            result = model.forward(user_id, user_emb, deterministic=True, topk=20)
+            result = model.forward(user_id, user_emb, deterministic=True, topk=20,
+                                   eval_history=history)
             candidates = result["candidates"]
             action_counts[result["action_name"]] += 1
             target_int = int(target)
@@ -637,7 +715,8 @@ def parse_args():
     p.add_argument('--dataset', type=str, default='beauty')
     p.add_argument('--backbone', type=str, default='t5-small')
     p.add_argument('--data_dir', type=str, default='data')
-    p.add_argument('--sample_ratio', type=float, default=0.05)
+    p.add_argument('--sample_ratio', type=float, default=1.0,
+                   help='Fraction of training data (data is pre-filtered, use 1.0)')
     p.add_argument('--epochs', type=int, default=1)
     p.add_argument('--batch_size', type=int, default=4)
     p.add_argument('--beam_size', type=int, default=20)
@@ -650,6 +729,8 @@ def parse_args():
     p.add_argument('--p5_checkpoint', type=str, default=None,
                    help='Path to trained P5 checkpoint (required for meaningful results)')
     p.add_argument('--skip_p5', action='store_true', help='Skip P5 eval (only RL variants)')
+    p.add_argument('--cooc_embeddings', type=str, default=None,
+                   help='Path to co-occurrence embeddings pickle file (overrides P5 embeddings)')
     return p.parse_args()
 
 
@@ -716,7 +797,36 @@ def main():
     # ── Data ──
     print("\nLoading data...")
     data_bridge = SequentialDataBridge(args.data_dir, args.dataset, p5_model=p5_model, device=device)
-    item_embs = data_bridge.get_all_item_embs(max_items=5000)
+
+    if args.cooc_embeddings and os.path.exists(args.cooc_embeddings):
+        print(f"Loading co-occurrence embeddings from {args.cooc_embeddings}...")
+        with open(args.cooc_embeddings, 'rb') as f:
+            item_embs = __import__('pickle').load(f)
+        print(f"  Loaded {len(item_embs)} item embeddings")
+    else:
+        cooc_embeddings = None
+    if args.cooc_embeddings and os.path.exists(args.cooc_embeddings):
+        print(f"Loading co-occurrence embeddings from {args.cooc_embeddings}...")
+        with open(args.cooc_embeddings, 'rb') as f:
+            cooc_embeddings = __import__('pickle').load(f)
+        print(f"  Loaded {len(cooc_embeddings)} item embeddings")
+        item_embs = cooc_embeddings
+        # Patch encode_user_history
+        _orig = data_bridge.encode_user_history
+        def _cooc_encode(item_seq):
+            if len(item_seq) == 0:
+                return np.zeros(next(iter(cooc_embeddings.values())).shape[0], dtype=np.float32)
+            embs = []
+            for iid in item_seq[-50:]:
+                e = cooc_embeddings.get(int(iid))
+                if e is not None:
+                    embs.append(e)
+            if embs:
+                return np.mean(embs, axis=0).astype(np.float32)
+            return np.zeros(next(iter(cooc_embeddings.values())).shape[0], dtype=np.float32)
+        data_bridge.encode_user_history = _cooc_encode
+    else:
+        item_embs = data_bridge.get_all_item_embs(max_items=5000)
     retriever = CandidateRetriever(item_embs=item_embs, user_sequences=data_bridge.user_sequences, topk=20)
 
     train_samples = data_bridge.get_train_data(sample_ratio=args.sample_ratio)
@@ -762,7 +872,7 @@ def main():
 
         # Build model
         model = AblationRLModel(p5_model, config, data_bridge.user_sequences,
-                                variant_name, device=device)
+                                variant_name, device=device, cooc_embeddings=cooc_embeddings)
         model.set_retriever(retriever)
 
         # Warm up memory

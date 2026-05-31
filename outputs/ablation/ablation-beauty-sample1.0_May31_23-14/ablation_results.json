@@ -1,0 +1,127 @@
+{
+  "config": {
+    "dataset": "beauty",
+    "sample_ratio": 1.0,
+    "epochs": 1,
+    "max_eval": 500
+  },
+  "variants": {
+    "full_system": {
+      "name": "RL + Full Memory",
+      "desc": "All components enabled",
+      "use_memory": true,
+      "use_long_term": true,
+      "time_decay": true,
+      "adaptive_epsilon": true
+    },
+    "no_memory": {
+      "name": "RL (No Memory)",
+      "desc": "Zero memory context, RL policy only",
+      "use_memory": false,
+      "use_long_term": false,
+      "time_decay": false,
+      "adaptive_epsilon": true
+    },
+    "short_term_only": {
+      "name": "RL + Short-term Only",
+      "desc": "Rolling buffer only, no FAISS long-term",
+      "use_memory": true,
+      "use_long_term": false,
+      "time_decay": false,
+      "adaptive_epsilon": true
+    },
+    "no_time_decay": {
+      "name": "RL + Full Memory (no decay)",
+      "desc": "FAISS retrieval without time decay weighting",
+      "use_memory": true,
+      "use_long_term": true,
+      "time_decay": false,
+      "adaptive_epsilon": true
+    },
+    "fixed_epsilon": {
+      "name": "RL + Fixed Epsilon",
+      "desc": "Constant epsilon, no uncertainty adaptation",
+      "use_memory": true,
+      "use_long_term": true,
+      "time_decay": true,
+      "adaptive_epsilon": false
+    }
+  },
+  "results": {
+    "full_system": {
+      "HR@1": 0.002,
+      "HR@5": 0.016,
+      "HR@10": 0.024,
+      "NDCG@5": 0.009,
+      "NDCG@10": 0.0117,
+      "count": 500,
+      "action_dist": {
+        "remind_abandoned": 0.684,
+        "explore_new_brand": 0.202,
+        "explore_trending_global": 0.074,
+        "exploit_high_ctr": 0.024,
+        "serendipity": 0.016
+      }
+    },
+    "no_memory": {
+      "HR@1": 0.002,
+      "HR@5": 0.016,
+      "HR@10": 0.024,
+      "NDCG@5": 0.009,
+      "NDCG@10": 0.0117,
+      "count": 500,
+      "action_dist": {
+        "exploit_high_ctr": 0.384,
+        "explore_new_brand": 0.278,
+        "remind_abandoned": 0.142,
+        "explore_trending_global": 0.104,
+        "serendipity": 0.082
+      }
+    },
+    "short_term_only": {
+      "HR@1": 0.002,
+      "HR@5": 0.016,
+      "HR@10": 0.024,
+      "NDCG@5": 0.009,
+      "NDCG@10": 0.0117,
+      "count": 500,
+      "action_dist": {
+        "serendipity": 0.53,
+        "explore_new_brand": 0.346,
+        "remind_abandoned": 0.052,
+        "explore_trending_global": 0.05,
+        "explore_new_category": 0.018
+      }
+    },
+    "no_time_decay": {
+      "HR@1": 0.002,
+      "HR@5": 0.016,
+      "HR@10": 0.024,
+      "NDCG@5": 0.009,
+      "NDCG@10": 0.0117,
+      "count": 500,
+      "action_dist": {
+        "explore_new_brand": 0.362,
+        "serendipity": 0.32,
+        "explore_trending_global": 0.154,
+        "remind_abandoned": 0.09,
+        "exploit_high_ctr": 0.074
+      }
+    },
+    "fixed_epsilon": {
+      "HR@1": 0.002,
+      "HR@5": 0.016,
+      "HR@10": 0.024,
+      "NDCG@5": 0.009,
+      "NDCG@10": 0.0117,
+      "count": 500,
+      "action_dist": {
+        "explore_trending_global": 0.374,
+        "remind_abandoned": 0.304,
+        "exploit_high_ctr": 0.256,
+        "explore_new_brand": 0.048,
+        "explore_new_category": 0.012
+      }
+    }
+  }
+}

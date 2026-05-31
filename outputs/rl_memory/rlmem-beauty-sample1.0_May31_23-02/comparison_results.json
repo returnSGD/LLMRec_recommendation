@@ -1,0 +1,33 @@
+{
+  "config": {
+    "dataset": "beauty",
+    "sample_ratio": 1.0,
+    "epochs": 1,
+    "rl_algorithm": "cql",
+    "memory_dim": 128,
+    "beam_size": 20
+  },
+  "p5_baseline": {
+    "HR@1": 0.0,
+    "HR@5": 0.0,
+    "HR@10": 0.0,
+    "NDCG@5": 0.0,
+    "NDCG@10": 0.0,
+    "count": 500
+  },
+  "rl_memory": {
+    "HR@1": 0.002,
+    "HR@5": 0.016,
+    "HR@10": 0.024,
+    "NDCG@5": 0.009,
+    "NDCG@10": 0.0117,
+    "count": 500,
+    "action_dist": {
+      "serendipity": 0.452,
+      "exploit_high_ctr": 0.3,
+      "explore_new_brand": 0.18,
+      "explore_trending_global": 0.054,
+      "remind_abandoned": 0.014
+    }
+  }
+}

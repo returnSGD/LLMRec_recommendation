@@ -120,17 +120,28 @@ class P5_Amazon_Dataset(Dataset):
         self.compute_datum_info()
 
         if self.sample_ratio < 1.0 and self.mode == 'train':
+            # Data should be pre-filtered; sample_ratio is deprecated for training.
+            # Fallback: user-level sampling to avoid fragmenting user sequences.
             import random as _random
-            _random.shuffle(self.datum_info)
-            keep = int(len(self.datum_info) * self.sample_ratio)
-            self.datum_info = self.datum_info[:keep]
+            _random.seed(42)
+            n_users = len(self.sequential_data)
+            n_keep = max(1, int(n_users * self.sample_ratio))
+            kept_user_idx = set(_random.sample(range(n_users), n_keep))
+            kept = []
+            for idx, (_, task, datum_idx) in enumerate(self.datum_info):
+                if task in ('sequential', 'traditional'):
+                    if (datum_idx % n_users) in kept_user_idx:
+                        kept.append(idx)
+                else:
+                    # Keep all non-seq entries (they don't depend on user sequence integrity)
+                    if _random.random() < self.sample_ratio:
+                        kept.append(idx)
+            self.datum_info = [self.datum_info[i] for i in kept]
             self.total_length = len(self.datum_info)
-            # Rebuild sequential indices: datum_info[i][0] must equal i
             for i in range(self.total_length):
                 self.datum_info[i] = (i,) + self.datum_info[i][1:]
-            print(f'Sampled {keep} training entries ({self.sample_ratio*100:.0f}%)')
+            print(f'User-level sampled {self.total_length} entries (ratio={self.sample_ratio})')
 
-    # compute_datum_info function intends to plan which data sample to be used for which task group according to the sample numbers in train_sample_numbers of pretrain.py
     def compute_datum_info(self):
         curr = 0
         for key in list(self.task_list.keys()):
@@ -1031,13 +1042,23 @@ class P5_Yelp_Dataset(Dataset):
 
         if self.sample_ratio < 1.0 and self.mode == 'train':
             import random as _random
-            _random.shuffle(self.datum_info)
-            keep = int(len(self.datum_info) * self.sample_ratio)
-            self.datum_info = self.datum_info[:keep]
+            _random.seed(42)
+            n_users = len(self.sequential_data)
+            n_keep = max(1, int(n_users * self.sample_ratio))
+            kept_user_idx = set(_random.sample(range(n_users), n_keep))
+            kept = []
+            for idx, (_, task, datum_idx) in enumerate(self.datum_info):
+                if task in ('sequential', 'traditional'):
+                    if (datum_idx % n_users) in kept_user_idx:
+                        kept.append(idx)
+                else:
+                    if _random.random() < self.sample_ratio:
+                        kept.append(idx)
+            self.datum_info = [self.datum_info[i] for i in kept]
             self.total_length = len(self.datum_info)
             for i in range(self.total_length):
                 self.datum_info[i] = (i,) + self.datum_info[i][1:]
-            print(f'Sampled {keep} training entries ({self.sample_ratio*100:.0f}%)')
+            print(f'User-level sampled {self.total_length} entries (ratio={self.sample_ratio})')
 
     def compute_datum_info(self):
         curr = 0
