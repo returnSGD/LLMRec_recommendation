@@ -85,34 +85,35 @@ def get_3060_config(sample_ratio: float = 0.05) -> Config:
 
 
 def get_server_config(sample_ratio: float = 0.05) -> Config:
-    """RTX PRO 6000 (96GB) config: larger dims, full memory, big batches."""
+    """RTX PRO 6000 (96GB) config: maxed-out dims, full memory, large batches."""
     config = Config()
     config.memory = MemoryConfig(
-        short_term_capacity=50,
-        memory_dim=256,
+        short_term_capacity=100,       # more recent interactions
+        memory_dim=512,                # doubled from 256
         faiss_index_type="IVFFlat",
-        top_k_retrieval=20,
+        faiss_nlist=200,               # more clusters for 96GB
+        top_k_retrieval=50,            # retrieve more memories
         time_decay_lambda=0.01,
     )
     config.rl = RLConfig(
         state_dim=512,
-        hidden_dim=256,
+        hidden_dim=512,               # bigger policy net
         num_actions=NUM_ACTIONS,
         policy_arch="mlp",
-        num_layers=3,
+        num_layers=4,                  # deeper network
         dropout=0.1,
         epsilon_start=0.3,
         epsilon_end=0.05,
-        epsilon_decay_steps=10000,
+        epsilon_decay_steps=20000,
         algorithm="cql",
         gamma=0.99,
         tau=0.005,
         lr=3e-4,
-        batch_size=256,
+        batch_size=512,               # max batch for 96GB
         grad_clip=1.0,
-        cql_alpha=1.0,
+        cql_alpha=2.0,                # stronger conservative penalty
     )
-    config.training.total_steps = 10000
+    config.training.total_steps = 20000  # more training
     return config
 
 
@@ -1055,13 +1056,15 @@ def main():
 
     # Precompute item embeddings for candidate retrieval
     print("\nPrecomputing item embeddings...")
-    item_embs = data_bridge.get_all_item_embs(max_items=5000)
+    max_items = None if args.config_preset == 'server' else 5000
+    retriever_topk = config.memory.top_k_retrieval if args.config_preset == 'server' else 20
+    item_embs = data_bridge.get_all_item_embs(max_items=max_items)
 
     # Build retriever
     retriever = CandidateRetriever(
         item_embs=item_embs,
         user_sequences=data_bridge.user_sequences,
-        topk=20,
+        topk=retriever_topk,
     )
     print(f"  Item embedding matrix: {retriever.item_matrix.shape}")
 
