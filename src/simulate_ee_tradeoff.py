@@ -1025,9 +1025,9 @@ def plot_tradeoff_curves(results: List[SweepResult], output_dir: str):
         ax2b.set_ylabel("Purchase Rate", color="tab:red")
 
         plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, "epsilon_vs_reward.png"), dpi=150)
+        plt.savefig(os.path.join(output_dir, "epsilon_vs_reward.svg"))
         plt.close()
-        print(f"  Saved epsilon_vs_reward.png")
+        print(f"  Saved epsilon_vs_reward.svg")
 
     # --- Plot 2: Adaptive vs Fixed epsilon comparison ---
     adaptive = [r for r in results if "Adaptive" in r.config.label]
@@ -1056,9 +1056,9 @@ def plot_tradeoff_curves(results: List[SweepResult], output_dir: str):
         ax.grid(True, alpha=0.3)
 
         plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, "ee_tradeoff_frontier.png"), dpi=150)
+        plt.savefig(os.path.join(output_dir, "ee_tradeoff_frontier.svg"))
         plt.close()
-        print(f"  Saved ee_tradeoff_frontier.png")
+        print(f"  Saved ee_tradeoff_frontier.svg")
 
     # --- Plot 3: Action distribution heatmap ---
     top_results = sorted(results, key=lambda r: r.total_reward, reverse=True)[:10]
@@ -1086,9 +1086,9 @@ def plot_tradeoff_curves(results: List[SweepResult], output_dir: str):
 
         plt.colorbar(im, ax=ax, label="Action Probability")
         plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, "action_distribution.png"), dpi=150)
+        plt.savefig(os.path.join(output_dir, "action_distribution.svg"))
         plt.close()
-        print(f"  Saved action_distribution.png")
+        print(f"  Saved action_distribution.svg")
 
     # --- Plot 4: Per-step reward curves ---
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -1107,9 +1107,9 @@ def plot_tradeoff_curves(results: List[SweepResult], output_dir: str):
     ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "per_step_reward.png"), dpi=150)
+    plt.savefig(os.path.join(output_dir, "per_step_reward.svg"))
     plt.close()
-    print(f"  Saved per_step_reward.png")
+    print(f"  Saved per_step_reward.svg")
 
 
 # ===========================================================================
